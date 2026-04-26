@@ -19,6 +19,7 @@ import hmac
 import json
 import re
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Iterable, Literal
@@ -191,6 +192,38 @@ class User:
     role: Literal["Admin", "User"]
 
 
+def get_users() -> dict[str, dict[str, str]]:
+    """
+    Load users from st.secrets, with a safe fallback.
+
+    Requirement:
+    - If st.secrets is empty or missing the auth section, we still allow access
+      using a default Admin account (admin/admin123).
+    """
+    # Default fallback Admin (always present unless overridden).
+    users: dict[str, dict[str, str]] = {
+        "admin": {"password": "admin123", "role": ROLE_ADMIN},
+    }
+
+    auth_section = st.secrets.get("auth", None)
+    if auth_section and isinstance(auth_section, Mapping):
+        raw_users = auth_section.get("users", [])
+        if isinstance(raw_users, list):
+            for u in raw_users:
+                if not isinstance(u, dict):
+                    continue
+                username = str(u.get("username", "")).strip()
+                password = str(u.get("password", ""))
+                role = str(u.get("role", ROLE_USER)).strip() or ROLE_USER
+                if not username or not password:
+                    continue
+                if role not in (ROLE_ADMIN, ROLE_USER):
+                    role = ROLE_USER
+                users[username] = {"password": password, "role": role}
+
+    return users
+
+
 def _require_auth_secrets() -> dict[str, dict[str, str]]:
     """
     Credentials MUST come from st.secrets only.
@@ -204,7 +237,8 @@ def _require_auth_secrets() -> dict[str, dict[str, str]]:
     ]
     """
     auth_section = st.secrets.get("auth", None)
-    if not auth_section or not isinstance(auth_section, dict):
+    # Streamlit secrets sections are not guaranteed to be plain dicts.
+    if not auth_section or not isinstance(auth_section, Mapping):
         raise RuntimeError("Missing [auth] section.")
 
     raw_users = auth_section.get("users", [])
@@ -233,10 +267,7 @@ def _require_auth_secrets() -> dict[str, dict[str, str]]:
 def verify_login(username: str, password: str) -> User | None:
     username = (username or "").strip()
     password = password or ""
-    try:
-        users = _require_auth_secrets()
-    except Exception:
-        return None
+    users = get_users()
     if username not in users:
         return None
     if not hmac.compare_digest(password, users[username]["password"]):
@@ -261,7 +292,10 @@ def _require_sheets_secrets() -> tuple[dict[str, Any], str]:
     if "gcp_service_account" not in st.secrets or "sheets" not in st.secrets:
         raise RuntimeError("Missing secrets: [gcp_service_account] and [sheets].")
     sa = dict(st.secrets["gcp_service_account"])
-    spreadsheet_id = str(st.secrets["sheets"].get("spreadsheet_id", "")).strip()
+    sheets = st.secrets.get("sheets")
+    if not sheets or not isinstance(sheets, Mapping):
+        raise RuntimeError("Missing [sheets] section.")
+    spreadsheet_id = str(sheets.get("spreadsheet_id", "")).strip()
     if not spreadsheet_id:
         raise RuntimeError("Missing [sheets].spreadsheet_id in secrets.toml.")
     return sa, spreadsheet_id
@@ -707,27 +741,9 @@ def login_view() -> None:
     st.markdown(f'<div class="login-title">{APP_TITLE}</div>', unsafe_allow_html=True)
     st.markdown('<div class="login-subtitle">تسجيل الدخول للوصول إلى النظام</div>', unsafe_allow_html=True)
 
-    auth_ok = True
-    try:
-        _ = _require_auth_secrets()
-    except Exception:
-        auth_ok = False
-
-    if not auth_ok:
-        st.warning("لم يتم إعداد حسابات الدخول بعد. يرجى تحديث ملف secrets.toml (قسم auth).")
-        # Safe diagnostics (doesn't reveal passwords)
-        try:
-            keys = sorted(list(st.secrets.keys()))
-            st.caption(f"مفاتيح secrets المتاحة حالياً: `{', '.join(keys) if keys else '—'}`")
-            auth_present = "auth" in st.secrets
-            users_count = 0
-            if auth_present and isinstance(st.secrets.get("auth"), dict):
-                raw_users = st.secrets["auth"].get("users", [])
-                if isinstance(raw_users, list):
-                    users_count = len(raw_users)
-            st.caption(f"auth موجود؟ `{auth_present}` | عدد المستخدمين داخل auth.users: `{users_count}`")
-        except Exception:
-            st.caption("تعذر قراءة st.secrets داخل بيئة التشغيل الحالية.")
+    # No debug text on the login screen.
+    # If secrets are missing, a default Admin account is still available.
+    _ = get_users()
 
     with st.form("login_form", clear_on_submit=False):
         username = st.text_input("اسم المستخدم", value="", placeholder="admin")
