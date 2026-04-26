@@ -57,8 +57,8 @@ CORE_HEADERS = [
 FP_STATUSES = ["مستخدمات طويل المدى", "مستخدمات قصير المدى", "لا تستخدم"]
 
 # Can be replaced later with reference tables.
-DEFAULT_MEDICAL_UNITS = ["وحدة 1", "وحدة 2", "وحدة 3"]
-DEFAULT_AREAS = ["المنطقة 1", "المنطقة 2", "المنطقة 3"]
+DEFAULT_MEDICAL_UNITS = ["طب اسرة المتراس","طب اسرة الورديان","طب اسرة ابن سهلان","طب اسرة الورديان","طب اسرة الكارنتينا","طب اسرة العامود","طب اسرة القبارى","طب اسرة المفروزة"]
+DEFAULT_AREAS = ["منطقة غرب الطبيه"]
 
 # Strict patterns
 NATIONAL_ID_RE = re.compile(r"^\d{14}$")
