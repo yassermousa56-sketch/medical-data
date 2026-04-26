@@ -715,6 +715,19 @@ def login_view() -> None:
 
     if not auth_ok:
         st.warning("لم يتم إعداد حسابات الدخول بعد. يرجى تحديث ملف secrets.toml (قسم auth).")
+        # Safe diagnostics (doesn't reveal passwords)
+        try:
+            keys = sorted(list(st.secrets.keys()))
+            st.caption(f"مفاتيح secrets المتاحة حالياً: `{', '.join(keys) if keys else '—'}`")
+            auth_present = "auth" in st.secrets
+            users_count = 0
+            if auth_present and isinstance(st.secrets.get("auth"), dict):
+                raw_users = st.secrets["auth"].get("users", [])
+                if isinstance(raw_users, list):
+                    users_count = len(raw_users)
+            st.caption(f"auth موجود؟ `{auth_present}` | عدد المستخدمين داخل auth.users: `{users_count}`")
+        except Exception:
+            st.caption("تعذر قراءة st.secrets داخل بيئة التشغيل الحالية.")
 
     with st.form("login_form", clear_on_submit=False):
         username = st.text_input("اسم المستخدم", value="", placeholder="admin")
